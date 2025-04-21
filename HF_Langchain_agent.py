@@ -14,6 +14,7 @@ DB_PATH = "mlops.db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
 # ========== CUSTOM LLM ==========
+
 class MyDirectLLM(LLM):
     def __init__(self, model, tokenizer, max_new_tokens=256, temperature=0.2):
         super().__init__()
@@ -25,6 +26,16 @@ class MyDirectLLM(LLM):
     @property
     def _llm_type(self):
         return "direct_llama"
+
+    @property
+    def _identifying_params(self):
+        # For LangChain's internal validation and serialization
+        return {
+            "model": str(self.model.__class__),
+            "tokenizer": str(self.tokenizer.__class__),
+            "max_new_tokens": self.max_new_tokens,
+            "temperature": self.temperature,
+        }
 
     def _call(self, prompt, stop=None, **kwargs):
         input_ids = self.tokenizer.encode(prompt, return_tensors="pt")
