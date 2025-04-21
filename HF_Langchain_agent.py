@@ -38,7 +38,10 @@ vectorstore = FAISS.from_texts(doc_chunks, embedding_model)
 
 # ========== SQL TOOL ==========
 
+import re
+
 def nl_to_sql(question):
+    example_sql = "SELECT * FROM models WHERE current_stage = 'production';"
     prompt = (
         "Given the following SQLite table schema:\n"
         "models(model_name, current_stage, version)\n"
@@ -46,22 +49,30 @@ def nl_to_sql(question):
         "Return ONLY the SQL query, nothing else.\n"
         "Example:\n"
         "Question: Which models are in production?\n"
-        "SELECT * FROM models WHERE current_stage = 'production';\n"
+        f"{example_sql}\n"
+        "----\n"
         f"Question: {question}\n"
     )
     output = llm(prompt).strip()
-    # Remove any line that exactly matches the question
-    output_lines = [line.strip() for line in output.split('\n') if line.strip() and line.strip() != f"Question: {question}"]
+    # Remove any line that matches the example SQL or the question
+    output_lines = [
+        line.strip()
+        for line in output.split('\n')
+        if line.strip() and
+           line.strip() != f"Question: {question}" and
+           line.strip() != example_sql
+    ]
     # Look for a line starting with SQL keywords and ending with a semicolon
     for line in output_lines:
         if re.match(r"^(SELECT|INSERT|UPDATE|DELETE|WITH)\b.*;", line, re.IGNORECASE):
             return line
-    # Try to find a SQL statement anywhere in the output
+    # Try to find a SQL statement anywhere in the output, but not the example
     match = re.search(r"(SELECT|INSERT|UPDATE|DELETE|WITH)[\s\S]+?;", output, re.IGNORECASE)
-    if match:
+    if match and match.group(0).strip() != example_sql:
         return match.group(0).strip()
-    # If nothing found, return empty string or error
+    # If nothing found, return empty string
     return ""
+
 
 
 def execute_sql(sql):
