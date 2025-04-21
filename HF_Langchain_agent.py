@@ -37,27 +37,32 @@ embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 vectorstore = FAISS.from_texts(doc_chunks, embedding_model)
 
 # ========== SQL TOOL ==========
+
 def nl_to_sql(question):
     prompt = (
         "Given the following SQLite table schema:\n"
         "models(model_name, current_stage, version)\n"
         "Convert the following natural language question to a syntactically correct SQL query. "
-        "Return ONLY the SQL query, nothing else. Here is an example:\n"
+        "Return ONLY the SQL query, nothing else.\n"
+        "Example:\n"
         "Question: Which models are in production?\n"
         "SELECT * FROM models WHERE current_stage = 'production';\n"
         f"Question: {question}\n"
     )
     output = llm(prompt).strip()
-    # Extract the first line that looks like SQL
-    for line in output.split('\n'):
-        if line.strip().lower().startswith("select"):
-            return line.strip()
-    # Fallback: try to extract SQL using regex
-    import re
-    match = re.search(r"(SELECT .*?;)", output, re.IGNORECASE | re.DOTALL)
+    # Remove any line that exactly matches the question
+    output_lines = [line.strip() for line in output.split('\n') if line.strip() and line.strip() != f"Question: {question}"]
+    # Look for a line starting with SQL keywords and ending with a semicolon
+    for line in output_lines:
+        if re.match(r"^(SELECT|INSERT|UPDATE|DELETE|WITH)\b.*;", line, re.IGNORECASE):
+            return line
+    # Try to find a SQL statement anywhere in the output
+    match = re.search(r"(SELECT|INSERT|UPDATE|DELETE|WITH)[\s\S]+?;", output, re.IGNORECASE)
     if match:
-        return match.group(1)
-    return output
+        return match.group(0).strip()
+    # If nothing found, return empty string or error
+    return ""
+
 
 def execute_sql(sql):
     conn = sqlite3.connect(DB_PATH)
