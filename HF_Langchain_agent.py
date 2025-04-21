@@ -1,72 +1,42 @@
 import sqlite3
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from langchain_core.language_models.llms import LLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+from langchain_community.llms import HuggingFacePipeline
 from langchain_community.vectorstores import FAISS
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.tools import Tool
 from langchain.agents import initialize_agent, AgentType
-import torch
+import re
 
 # ========== CONFIGURATION ==========
-LLAMA_MODEL_PATH = "meta-llama/Meta-Llama-3.1-8B-Instruct"
+LLAMA_MODEL_PATH = "meta-llama/Meta-Llama-3.1-8B-Instruct"  # Update to your local path if needed
 DOC_PATH = "mlops_doc.txt"
 DB_PATH = "mlops.db"
 EMBEDDING_MODEL = "all-MiniLM-L6-v2"
 
-# ========== CUSTOM LLM ==========
-
-class MyDirectLLM(LLM):
-    def __init__(self, model, tokenizer, max_new_tokens=256, temperature=0.2):
-        super().__init__()
-        self.model = model
-        self.tokenizer = tokenizer
-        self.max_new_tokens = max_new_tokens
-        self.temperature = temperature
-
-    @property
-    def _llm_type(self):
-        return "direct_llama"
-
-    @property
-    def _identifying_params(self):
-        # For LangChain's internal validation and serialization
-        return {
-            "model": str(self.model.__class__),
-            "tokenizer": str(self.tokenizer.__class__),
-            "max_new_tokens": self.max_new_tokens,
-            "temperature": self.temperature,
-        }
-
-    def _call(self, prompt, stop=None, **kwargs):
-        input_ids = self.tokenizer.encode(prompt, return_tensors="pt")
-        with torch.no_grad():
-            output = self.model.generate(
-                input_ids=input_ids,
-                max_new_tokens=self.max_new_tokens,
-                temperature=self.temperature,
-                do_sample=True,
-                pad_token_id=self.tokenizer.eos_token_id
-            )
-        decoded = self.tokenizer.decode(output[0][input_ids.shape[1]:], skip_special_tokens=True)
-        return decoded.strip()
-
-# ========== LOAD LOCAL LLM ==========
+# ========== LOAD LOCAL LLM WITH PIPELINE ==========
 print("Loading Llama 3.1 8B LLM...")
 tokenizer = AutoTokenizer.from_pretrained(LLAMA_MODEL_PATH)
-model = AutoModelForCausalLM.from_pretrained(LLAMA_MODEL_PATH).to("cpu")
-llm = MyDirectLLM(model, tokenizer)
+model = AutoModelForCausalLM.from_pretrained(LLAMA_MODEL_PATH)
+llm_pipeline = pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer,
+    max_new_tokens=256,
+    temperature=0.2,
+    do_sample=True,
+    device=-1  # CPU
+)
+llm = HuggingFacePipeline(pipeline=llm_pipeline)
 
 # ========== BUILD FAISS VECTOR STORE ==========
 print("Building FAISS vector store from documentation...")
 with open(DOC_PATH, "r", encoding="utf-8") as f:
     doc_text = f.read()
 doc_chunks = [chunk.strip() for chunk in doc_text.split("\n\n") if chunk.strip()]
-
 embedding_model = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 vectorstore = FAISS.from_texts(doc_chunks, embedding_model)
 
 # ========== SQL TOOL ==========
-import re
 def nl_to_sql(question):
     prompt = (
         "You are an expert SQL assistant. Given the schema: models(model_name, current_stage, version), "
@@ -153,7 +123,7 @@ agent = initialize_agent(
 
 # ========== MAIN LOOP ==========
 if __name__ == "__main__":
-    print("MLOps Assistant (LangChain, Direct LLM) is ready. Type your question (Ctrl+C to exit):")
+    print("MLOps Assistant (LangChain, HuggingFacePipeline) is ready. Type your question (Ctrl+C to exit):")
     while True:
         try:
             user_query = input("\n> ")
