@@ -39,23 +39,24 @@ vectorstore = FAISS.from_texts(doc_chunks, embedding_model)
 # ========== SQL TOOL ==========
 def nl_to_sql(question):
     prompt = (
-        "You are an expert SQL assistant. Given the schema: models(model_name, current_stage, version), "
-        "write an SQLite SQL query for the question. "
-        "Here is an example:\n"
+        "Given the following SQLite table schema:\n"
+        "models(model_name, current_stage, version)\n"
+        "Convert the following natural language question to a syntactically correct SQL query. "
+        "Return ONLY the SQL query, nothing else. Here is an example:\n"
         "Question: Which models are in production?\n"
-        "SQL: SELECT * FROM models WHERE current_stage = 'production';\n"
+        "SELECT * FROM models WHERE current_stage = 'production';\n"
         f"Question: {question}\n"
-        "SQL:"
     )
     output = llm(prompt).strip()
-    # Try to extract SQL using regex
-    match = re.search(r"(SELECT .*?;)", output, re.IGNORECASE | re.DOTALL)
-    if match:
-        return match.group(1)
-    # Fallback: scan lines
+    # Extract the first line that looks like SQL
     for line in output.split('\n'):
         if line.strip().lower().startswith("select"):
             return line.strip()
+    # Fallback: try to extract SQL using regex
+    import re
+    match = re.search(r"(SELECT .*?;)", output, re.IGNORECASE | re.DOTALL)
+    if match:
+        return match.group(1)
     return output
 
 def execute_sql(sql):
