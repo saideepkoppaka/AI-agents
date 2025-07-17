@@ -1,0 +1,14 @@
+#LangChain and related packages for agentic workflows
+langchain==0.2.5
+langchain-openai==0.1.8
+langgraph==0.1.1
+
+#Tooling for external integrations
+python-gitlab==4.6.0
+atlassian-python-api==4.0.4
+
+#Utility for handling environment variables
+python-dotenv==1.0.1
+
+#For the preview web application
+streamlit==1.36.0
